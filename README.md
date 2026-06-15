@@ -126,7 +126,7 @@ Elderly person (Telegram)
 
 ## Demo
 
-[Link to demo video]
+https://www.youtube.com/watch?v=6oHuiQCaowE
 
 The demo shows:
 - A full check-in conversation in Telegram (English)
