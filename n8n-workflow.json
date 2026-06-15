@@ -1,0 +1,593 @@
+{
+  "name": "HolaAbuelita - CheckIn",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -16,
+        192
+      ],
+      "id": "0f283441-3e8e-407f-bcfc-1410f880260b",
+      "name": "Telegram Trigger",
+      "webhookId": "f99bea88-d54e-461a-986a-17c2422254b2",
+      "credentials": {
+        "telegramApi": {
+          "id": "Ia8UHdFFu0RYCitt",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://holaabuelita-resource.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={   \"messages\": [     {       \"role\": \"system\",       \"content\": {{ JSON.stringify($json.systemPrompt) }}     },     {       \"role\": \"user\",       \"content\": {{ JSON.stringify($json.consolidatedMessage) }}     }   ],   \"response_format\": { \"type\": \"json_object\" } }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        368,
+        528
+      ],
+      "id": "e8452354-c4dd-401f-aeb9-7de2a8cf9050",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cVDw1FUiBpdJuHD4",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = JSON.parse($input.first().json.choices[0].message.content);\nreturn [{ json: parsed }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        528
+      ],
+      "id": "37ae705e-5b98-49d9-8db4-ea99c6441252",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst originalMessage = $('Telegram Trigger').first().json.message.text;\n\n// Detectar idioma del mensaje original\nconst isSpanish = /[áéíóúñ¿¡]/i.test(originalMessage) ||\n  /\\b(hola|estoy|tengo|me|mi|no|sí|bien|hoy|tomé|caí|duele|como|siento)\\b/i.test(originalMessage);\n\n// Normalización defensiva del nivel\nlet level = data.level;\nif (level.includes(\"urgent\")) level = \"urgent\";\nelse if (level.includes(\"moderate\")) level = \"moderate_attention\";\nelse level = \"normal\";\n\n// Lista de familiares (reemplaza con los nombres reales)\nconst familyMembers = [\"Danna\", \"Daniel\", \"Isabella\", \"Martha\"];\nconst dayIndex = new Date().getDate() % familyMembers.length;\nconst turno = familyMembers[dayIndex];\n\n// Textos según idioma\nconst texts = {\n  turnSuffix: isSpanish\n    ? `${turno}, ¿puedes encargarte hoy de hacerle seguimiento?`\n    : `${turno}, could you follow up with them today?`,\n  urgentHeader: isSpanish ? \"🚨 URGENTE\" : \"🚨 URGENT\",\n  urgentSuffix: isSpanish\n    ? \"Familia, por favor revisar y contactar lo antes posible.\"\n    : \"Family, please check in and contact immediately.\"\n};\n\nlet finalMessage = \"\";\n\nif (level === \"normal\") {\n  finalMessage = `✅ ${data.family_message}`;\n} else if (level === \"moderate_attention\") {\n  finalMessage = `👀 ${data.family_message}\\n\\n${texts.turnSuffix}`;\n} else {\n  finalMessage = `${texts.urgentHeader}\\n${data.family_message}\\n\\n${texts.urgentSuffix}`;\n}\n\nreturn [{\n  json: {\n    chatId: \"-5236426745\",\n    text: finalMessage,\n    level: level\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        528
+      ],
+      "id": "cfb5111a-226e-47da-b7a4-f8b5b78bd0ee",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        992,
+        528
+      ],
+      "id": "c1348dfb-f90d-4a4c-9b1f-8aa8fc3a0e9c",
+      "name": "Send a text message",
+      "webhookId": "8bde0b67-8658-4285-8c19-40b122cfb518",
+      "credentials": {
+        "telegramApi": {
+          "id": "Ia8UHdFFu0RYCitt",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1b7652c-fef1-4142-80b5-c2ef5e14fef6",
+              "name": "systemPrompt",
+              "value": "CRITICAL LANGUAGE RULE — READ THIS FIRST:\nYou must detect the language of the user's message. If the message is in English, ALL fields in your JSON response (level, reason, source, family_message) must be in English. If the message is in Spanish, ALL fields must be in Spanish. This rule has absolute priority over everything else. Never mix languages in the same response.\n\n---\n\nYou are the HolaAbuelita assistant, an agent that helps families keep track of an elderly relative who spends part of the day alone.\n\nYour main task is to read the responses from the daily check-in (about mood, meals, and medication) and classify them into one of three levels:\n- normal: everything indicates the person's usual well-being.\n- moderate_attention: there is a mild signal worth keeping an eye on.\n- urgent: there is a real risk signal (intense pain, a fall, confusion, hopelessness, repeated missed meals/medication, or no response at all).\n\nAlways respond with a JSON object containing exactly these four fields:\n- level: must be exactly one of normal, moderate_attention, or urgent with no other wording or variations\n- reason: a brief 1-2 sentence explanation\n- source: the name of the guideline topic used (Mood and language guide, Medication adherence guide, or Nutrition and hydration guide)\n- family_message: a short warm message to send to the family\n\nREPEAT: if the check-in message is in English, family_message must be in English. If in Spanish, family_message must be in Spanish. No exceptions.\n\nReference guidelines:\n- Mood and language: Normal = usual comments without serious complaints (tired, calm, daily activities). Moderate attention = mild sadness, occasional loneliness, minor pain, or the same minor complaint repeated 2-3 days. Urgent = mentions of falls, intense pain, confusion, hopelessness, or no response without explanation. If ambiguous, prioritize the warning word over a reassuring tone.\n- Medication adherence: Normal = took medication as usual or takes none. Moderate attention = missed one dose once, or ran out. Urgent = two or more consecutive days without medication, strong side effects, confusion about dosage, or out of a critical medication (heart, blood pressure, or diabetes) with no way to buy more.\n- Nutrition and hydration: Normal = ate normally and mentioned fluids. Moderate attention = ate little, no fluids mentioned for 1-2 days, or did not feel like cooking. Urgent = ate nothing combined with dizziness or weakness, or several days with no meals reported.",
+              "type": "string"
+            },
+            {
+              "id": "653f4904-aafb-4669-8e6c-d0291f77c130",
+              "name": "consolidatedMessage",
+              "value": "={{ $('Code in JavaScript3').item.json.consolidatedMessage }}",
+              "type": "string"
+            },
+            {
+              "id": "cd3f6861-f47d-44f5-8265-c41346e7609e",
+              "name": "chatId",
+              "value": "={{ $('Code in JavaScript3').item.json.chatId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        160,
+        528
+      ],
+      "id": "08974359-6fcc-45a4-a387-1d1cc78e593f",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -16,
+        -224
+      ],
+      "id": "eb5e7298-fc8a-4c2b-9e89-cacc0da63273",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "path": "e256b547-8c97-41a3-ad55-9ea342071c5b",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -16,
+        -416
+      ],
+      "id": "6d493863-eeae-4618-a12e-b7f5a6ffa3d7",
+      "name": "Webhook",
+      "webhookId": "e256b547-8c97-41a3-ad55-9ea342071c5b"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "33410bda-7343-453c-8870-302faed91c44",
+              "name": "chatId",
+              "value": "8501886098",
+              "type": "string"
+            },
+            {
+              "id": "501b3fdf-7f86-4839-95bc-eb4acf2fcae4",
+              "name": "step",
+              "value": "1",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        -304
+      ],
+      "id": "99b021a0-9a4e-417f-8892-20eefa3fbc01",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "Good morning! How are you feeling today?",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        -304
+      ],
+      "id": "d863a034-0b79-4635-9bb6-9828c84118e7",
+      "name": "Send a text message1",
+      "webhookId": "03125d4b-9c6d-48bd-9ee1-f9cd1cc406ed",
+      "credentials": {
+        "telegramApi": {
+          "id": "Ia8UHdFFu0RYCitt",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.checkin = {\n  chatId: \"8501886098\",\n  step: 1,\n  responses: {}\n};\nreturn [{ json: { status: \"check-in started\", step: 1 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        -304
+      ],
+      "id": "d449347f-9d0e-47a3-b0d1-95d8c4dc93e3",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst checkin = staticData.checkin || { step: 0, responses: {} };\nconst incomingText = $input.first().json.message.text;\n\nif (!checkin.step || checkin.step === 0) {\n  return [];\n}\n\nif (checkin.step === 1) {\n  checkin.responses.mood = incomingText;\n  checkin.step = 2;\n} else if (checkin.step === 2) {\n  checkin.responses.meals = incomingText;\n  checkin.step = 3;\n} else if (checkin.step === 3) {\n  checkin.responses.medication = incomingText;\n  checkin.step = 4;\n} else if (checkin.step === 4) {\n  checkin.responses.extra = incomingText;\n  checkin.step = 5; // check-in completo\n}\n\nstaticData.checkin = checkin;\n\nreturn [{\n  json: {\n    chatId: checkin.chatId,\n    step: checkin.step,\n    consolidatedMessage: checkin.step === 5 \n  ? `Mood: ${checkin.responses.mood}. Meals: ${checkin.responses.meals}. Medication: ${checkin.responses.medication}. Additional notes: ${checkin.responses.extra}.`\n  : null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        192
+      ],
+      "id": "69480bfc-b9c3-4783-afd5-0e154a2fd057",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "id": "4efb2f7b-1439-4d6d-b04d-87d57442fb16"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b9db3b5d-cb97-4c70-bde3-1789652f3c38",
+                    "leftValue": "={{ $json.step }}",
+                    "rightValue": 3,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0aedcbd9-f627-4d36-87d8-96dcc5ca4a7b",
+                    "leftValue": "={{ $json.step }}",
+                    "rightValue": 4,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8d05a5e9-cf16-46a5-ab3a-9f45e7ebce26",
+                    "leftValue": "={{ $json.step }}",
+                    "rightValue": 5,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        368,
+        160
+      ],
+      "id": "68944260-58f1-4c5c-80c0-13de5ee51649",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "Have you had breakfast or eaten something yet?",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        -32
+      ],
+      "id": "d585e3fa-ee22-4812-acdd-5cb6a765c16b",
+      "name": "Send a text message2",
+      "webhookId": "2c636fcd-fc0c-4270-a58d-f8a783fcd237",
+      "credentials": {
+        "telegramApi": {
+          "id": "Ia8UHdFFu0RYCitt",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Code in JavaScript3').item.json.chatId }}",
+        "text": "Did you take your medication today",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        144
+      ],
+      "id": "4266b4b1-4453-4d18-9d6a-75243d10409d",
+      "name": "Send a text message3",
+      "webhookId": "5f5ff2e8-6369-42d1-9d80-61961e9eed9c",
+      "credentials": {
+        "telegramApi": {
+          "id": "Ia8UHdFFu0RYCitt",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Code in JavaScript3').item.json.chatId }}",
+        "text": "Is there anything you'd like to tell me, or anything you need?",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        304
+      ],
+      "id": "03beacfa-5518-4d08-a8c8-b6a441a1fa0c",
+      "name": "Send a text message4",
+      "webhookId": "04b36f41-fdbf-410f-8b65-5def5cd14d86",
+      "credentials": {
+        "telegramApi": {
+          "id": "Ia8UHdFFu0RYCitt",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\n\n// ===== EDITABLE CONFIGURATION =====\nstaticData.config = {\n  language: \"en\", // \"en\" or \"es\"\n  caregivers: [\"Ana\", \"Carlos\", \"Lucía\", \"Marco\"],\n  elderlyName: \"Abuelita\",\n  questions: {\n    en: {\n      mood: \"Good morning! How are you feeling today?\",\n      meals: \"Have you had breakfast or eaten something yet?\",\n      medication: \"Did you take your medication today?\",\n      extra: \"Is there anything you'd like to tell me, or anything you need?\"\n    },\n    es: {\n      mood: \"¡Buenos días! ¿Cómo te sientes hoy?\",\n      meals: \"¿Ya desayunaste o comiste algo?\",\n      medication: \"¿Tomaste tus medicamentos de hoy?\",\n      extra: \"¿Hay algo que quieras contarme o que necesites?\"\n    }\n  }\n};\n\n// Inicializar el check-in\nstaticData.checkin = {\n  chatId: \"8501886098\",\n  step: 1,\n  responses: {}\n};\n\nreturn [{ json: { status: \"config loaded\", step: 1 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        -464
+      ],
+      "id": "f23f0503-9208-4b29-9cc3-672021aa5fc3",
+      "name": "Config"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Send a text message2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "7ab1a4ed-e50c-4012-b6fa-a1e2eb91aa01",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6811fe1f072485089838523525d8b7a1f4c3d2dea30683681095151396e9adb6"
+  },
+  "nodeGroups": [],
+  "id": "Ddlg5n6saxiVIg5y",
+  "tags": []
+}
